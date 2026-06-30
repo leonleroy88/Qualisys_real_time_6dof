@@ -1,6 +1,5 @@
 %% plot_tee_sonde.m
 % Visualisation des trajectoires sonde TEE
-% Superpose petite molette (v1+v2) et grande molette (v1+v2)
 % Calcule le débattement angulaire pour chaque molette
 
 clear; clc; close all;

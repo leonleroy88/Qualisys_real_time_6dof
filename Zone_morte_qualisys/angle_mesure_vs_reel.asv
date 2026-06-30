@@ -1,0 +1,369 @@
+%% ============================================================
+%  ANALYSE HYSTÉRÉSIS — AVEC ANGLES D'EULER DE MATRICE ROTATION
+%  Léon - 2026 — VERSION MATRICE ROTATION → EULER
+%
+%  Extrait la matrice de rotation 3x3 du fichier QTM
+%  Convertit en angles d'Euler (yaw = rotation molette)
+%  X (hystérésis) = Angle YAW (°)
+%  Y (hystérésis) = Distance du TIP (mm)
+% ============================================================
+clear; clc; close all;
+
+%% ---------------------------------------------------------------
+%  PARAMÈTRES ET SÉQUENCES
+%  ---------------------------------------------------------------
+fichier_petite = 'C:\Users\LEROY\Documents\Python_qualisys\Zone_morte_qualisys\poses_qtm_20260527_154128_petite_vraidecre.txt';
+fichier_grande = 'C:\Users\LEROY\Documents\Python_qualisys\Zone_morte_qualisys\poses_qtm_20260527_154353_grande_decrevrai.txt';
+
+% Les séquences attendues (pour validation)
+SEQ_PETITE = [50, -60, 30, -30, 10];
+SEQ_GRANDE = [120, -80, 100, -50, 50];
+
+%% ---------------------------------------------------------------
+%  CHARGEMENT DES DONNÉES
+%  ---------------------------------------------------------------
+fprintf('Chargement petite molette...\n');
+[pos_p, angle_p_raw] = load_qtm_data_with_rotation(fichier_petite);
+
+fprintf('Chargement grande molette...\n');
+[pos_g, angle_g_raw] = load_qtm_data_with_rotation(fichier_grande);
+
+%% ---------------------------------------------------------------
+%  LISSAGE ET CENTRAGE DES ANGLES
+%  ---------------------------------------------------------------
+% Lissage pour réduire le bruit
+angle_p = movmean(angle_p_raw, 15);
+angle_g = movmean(angle_g_raw, 15);
+
+% Soustraire la valeur initiale (mettre à ~0 au départ)
+angle_p = angle_p - angle_p(1);
+angle_g = angle_g - angle_g(1);
+
+% Calcul des distances du TIP
+dist_p = sqrt(sum((pos_p - pos_p(1,:)).^2, 2));
+dist_g = sqrt(sum((pos_g - pos_g(1,:)).^2, 2));
+
+%% ---------------------------------------------------------------
+%  ANALYSE : DÉTECTER LES PICS ET ZÉROS
+%  ---------------------------------------------------------------
+fprintf('\nAnalyse Petite Molette...\n');
+[stats_p] = analyser_sequence(angle_p, dist_p, SEQ_PETITE, 'Petite');
+
+fprintf('Analyse Grande Molette...\n');
+[stats_g] = analyser_sequence(angle_g, dist_g, SEQ_GRANDE, 'Grande');
+
+%% ---------------------------------------------------------------
+%  FIGURE — 6 graphiques d'hystérésis
+%  ---------------------------------------------------------------
+fig = figure('Name','Analyse Hystérésis Molettes - Angles EULER (YAW)', ...
+    'Color','w', 'Position',[50 50 1400 950]); 
+
+%% ---- LIGNE 1 (G1 & G2) : Angle et Distance vs temps ------
+for g = 1:2
+    ax1 = subplot(2,2,g);
+    hold(ax1,'on'); grid(ax1,'on'); set(ax1,'Color','w');
+    
+    if g == 1
+        angle  = angle_p;
+        dist   = dist_p;
+        couleur = [0.20 0.53 0.96];
+        nom    = 'Petite molette';
+    else
+        angle  = angle_g;
+        dist   = dist_g;
+        couleur = [0.85 0.25 0.15];
+        nom    = 'Grande molette';
+    end
+    
+    n = length(angle);
+    t = 1:n;
+    
+    yyaxis left
+    plot(ax1, t, angle, 'Color', couleur, 'LineWidth', 2);
+    ylabel(ax1, 'Angle YAW (°)', 'FontSize', 10, 'Color', couleur);
+    set(ax1, 'YColor', couleur);
+    
+    yyaxis right
+    plot(ax1, t, dist, '--', 'Color', [0.2 0.8 0.2], 'LineWidth', 1.5);
+    ylabel(ax1, 'Distance TIP (mm)', 'FontSize', 10, 'Color', [0.2 0.8 0.2]);
+    set(ax1, 'YColor', [0.2 0.8 0.2]);
+    
+    xlabel(ax1, 'Frame', 'FontSize', 10);
+    title(ax1, [nom ' — Angle (°) et Distance TIP (mm)'], 'FontSize', 11, 'FontWeight', 'bold');
+    set(ax1, 'FontSize', 10);
+end
+
+% %% ---- LIGNE 2 (G3 & G4) : Hystérésis 1er Cycle DÉTAILLÉ ------
+% for g = 1:2
+%     ax = subplot(3,2,g+2);
+%     hold(ax,'on'); grid(ax,'on'); set(ax,'Color','w');
+% 
+%     if g == 1
+%         angle  = angle_p;
+%         dist   = dist_p;
+%         stats  = stats_p;
+%         couleur = [0.20 0.53 0.96];
+%         nom    = 'Petite molette';
+%         color_aller = [0.00 0.40 1.00];   
+%         color_ret   = [0.60 0.85 1.00]; 
+%     else
+%         angle  = angle_g;
+%         dist   = dist_g;
+%         stats  = stats_g;
+%         couleur = [0.85 0.25 0.15];
+%         nom    = 'Grande molette';
+%         color_aller = [1.00 0.15 0.15];   
+%         color_ret   = [1.00 0.70 0.70];
+%     end
+% 
+%     % Limiter au premier cycle complet (du départ au retour à ~0)
+%     idx_cycle_end = stats.idx_cycle_end;
+% 
+%     % Tracer le cycle complet avec gradient de couleur
+%     idx = 1:idx_cycle_end;
+%     plot(ax, angle(idx), dist(idx), '-', 'Color', [couleur 0.7], 'LineWidth', 3);
+% 
+%     % Marqueurs des pics
+%     for i = 1:length(stats.idx_pics)
+%         if stats.idx_pics(i) <= idx_cycle_end
+%             marker_size = 11;
+%             if i <= length(stats.sequence_target)
+%                 if stats.sequence_target(i) > 0
+%                     marker_color = color_aller;
+%                 else
+%                     marker_color = color_ret;
+%                 end
+%             else
+%                 marker_color = [0.5 0.5 0.5];
+%             end
+% 
+%             plot(ax, angle(stats.idx_pics(i)), dist(stats.idx_pics(i)), '^', ...
+%                 'Color', 'k', 'MarkerFaceColor', marker_color, 'MarkerSize', marker_size, 'LineWidth', 1.5);
+%         end
+%     end
+% 
+%     % Point de départ (0°, 0mm)
+%     plot(ax, 0, dist(1), 'o', 'Color', 'k', 'MarkerFaceColor', [0.1 0.8 0.2], ...
+%         'MarkerSize', 12, 'DisplayName', 'Départ (0°)', 'LineWidth', 2);
+% 
+%     xline(ax, 0, 'k-', 'LineWidth', 1.5, 'Alpha', 0.7);
+%     yline(ax, 0, 'k:', 'LineWidth', 1.2, 'Alpha', 0.5);
+% 
+%     xlabel(ax, 'Angle molette YAW (°)', 'FontSize', 11, 'FontWeight', 'bold');
+%     ylabel(ax, 'Distance TIP (mm)', 'FontSize', 11, 'FontWeight', 'bold');
+%     title(ax, [nom ' — 1er Cycle (Hystérésis)'], 'FontSize', 12, 'FontWeight', 'bold');
+%     set(ax, 'FontSize', 10);
+%     grid(ax, 'on');
+% end
+
+%% ---- LIGNE 3 (G5 & G6) : Hystérésis DATASET COMPLET ------
+for g = 1:2
+    ax = subplot(2,2,g+2);
+    hold(ax,'on'); grid(ax,'on'); set(ax,'Color','w');
+    
+    if g == 1
+        angle  = angle_p;  dist = dist_p;  stats = stats_p;
+        nom    = 'Petite molette';
+        % --- COULEURS DU DÉGRADÉ PETITE MOLETTE ---
+        color_start = [0.60 0.85 1.00]; % Bleu très clair (Début)
+        color_end   = [0.00 0.15 0.60]; % Bleu très sombre (Fin)
+    else
+        angle  = angle_g;  dist = dist_g;  stats = stats_g;
+        nom    = 'Grande molette';
+        % --- COULEURS DU DÉGRADÉ GRANDE MOLETTE ---
+        color_start = [1.00 0.80 0.20]; % Jaune/Orange (Début)
+        color_end   = [0.60 0.00 0.00]; % Rouge très sombre (Fin)
+    end
+    
+    bounds = stats.idx_cycle_bounds;
+    num_cycles = length(bounds) - 1;
+    
+    % Création mathématique du gradient de couleurs
+    r_grad = linspace(color_start(1), color_end(1), num_cycles);
+    g_grad = linspace(color_start(2), color_end(2), num_cycles);
+    b_grad = linspace(color_start(3), color_end(3), num_cycles);
+    
+    % Tracer chaque cycle avec sa couleur calculée dans le dégradé
+    for c = 1:num_cycles
+        idx_seg = bounds(c):bounds(c+1);
+        col = [r_grad(c), g_grad(c), b_grad(c)];
+        
+        nom_cycle = sprintf('Cycle %d', c);
+        
+        plot(ax, angle(idx_seg), dist(idx_seg), '-', 'Color', col, 'LineWidth', 2);
+    end
+    
+    % Marqueurs Départ/Fin
+    plot(ax, 0, dist(1), 'o', 'Color', 'k', 'MarkerFaceColor', [0.1 0.8 0.2], ...
+        'MarkerSize', 10, 'DisplayName', 'Début', 'LineWidth', 1.5);
+    plot(ax, angle(end), dist(end), 's', 'Color', 'k', 'MarkerFaceColor', [0.9 0.2 0.2], ...
+        'MarkerSize', 10, 'DisplayName', 'Fin', 'LineWidth', 1.5);
+    
+    % Lignes d'axes cachées de la légende
+    xline(ax, 0, 'k-', 'LineWidth', 1.2, 'HandleVisibility', 'off');
+    yline(ax, 0, 'k:', 'LineWidth', 1.0, 'HandleVisibility', 'off');
+    
+    legend(ax, 'FontSize', 9, 'Location', 'northeast', 'Box', 'on');
+    xlabel(ax, 'Angle molette (°)', 'FontSize', 11, 'FontWeight', 'bold');
+    ylabel(ax, 'Distance TIP (mm)', 'FontSize', 11, 'FontWeight', 'bold');
+    title(ax, [nom ' — Séquence en dégradé'], 'FontSize', 12, 'FontWeight', 'bold');
+    set(ax, 'FontSize', 10);
+end
+
+sgtitle('Analyse d''Hystérésis — Angles d''Euler extraits de la Matrice de Rotation QTM', ...
+    'FontSize', 14, 'FontWeight', 'bold');
+
+%% ===============================================================
+%  AFFICHAGE DES STATISTIQUES
+%  ===============================================================
+fprintf('\n');
+fprintf('╔════════════════════════════════════════════════╗\n');
+fprintf('║          RÉSULTATS DE L''ANALYSE                ║\n');
+fprintf('╚════════════════════════════════════════════════╝\n\n');
+
+fprintf('===== PETITE MOLETTE =====\n');
+fprintf('Pics détectés aux angles (°): ');
+fprintf('%.1f ', angle_p(stats_p.idx_pics));
+fprintf('\nPics attendus (°): ');
+fprintf('%.0f ', stats_p.sequence_target);
+fprintf('\nErreur max: %.2f°\n\n', stats_p.erreur_max);
+
+fprintf('===== GRANDE MOLETTE =====\n');
+fprintf('Pics détectés aux angles (°): ');
+fprintf('%.1f ', angle_g(stats_g.idx_pics));
+fprintf('\nPics attendus (°): ');
+fprintf('%.0f ', stats_g.sequence_target);
+fprintf('\nErreur max: %.2f°\n', stats_g.erreur_max);
+
+%% ===============================================================
+%  FONCTIONS UTILITAIRES
+%  ===============================================================
+function [positions, angle_final] = load_qtm_data_with_rotation(file_path)
+    % Charge les données QTM : position 3D ET matrice de rotation
+    
+    fid = fopen(file_path, 'r');
+    if fid == -1
+        error('Fichier introuvable : %s', file_path);
+    end
+    
+    positions = [];
+    rotation_matrices = [];
+    
+    % Regex ultra-robustes : on cherche juste "x=..." et "matrix=(...)"
+    pat_pos = 'x=([-+]?[\d.]+)[,\s]+y=([-+]?[\d.]+)[,\s]+z=([-+]?[\d.]+)';
+    pat_rot = 'matrix=\(([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)[,\s]+([-+]?[\d.]+)\)';
+    
+    while ~feof(fid)
+        ligne = fgetl(fid);
+        
+        if ischar(ligne)
+            tok_pos = regexp(ligne, pat_pos, 'tokens');
+            tok_rot = regexp(ligne, pat_rot, 'tokens');
+            
+            % SÉCURITÉ 1 : On garde la frame QUE si on a lu les DEUX
+            if ~isempty(tok_pos) && ~isempty(tok_rot)
+                xyz = cellfun(@str2double, tok_pos{1});
+                rot_values = cellfun(@str2double, tok_rot{1});
+                R = reshape(rot_values, 3, 3)';  % Transpose car stockée ligne par ligne
+                
+                positions(end+1, :) = xyz;
+                rotation_matrices(end+1,:,:) = R;
+            end
+        end
+    end
+    
+    fclose(fid);
+    
+    % SÉCURITÉ 2 : Vérifie que le fichier n'était pas vide
+    if isempty(positions)
+        error('ERREUR LECTURE : Aucune donnée trouvée. Vérifie le format du fichier %s', file_path);
+    end
+    
+    %% Convertir matrices de rotation → angles d'Euler
+    n_frames = size(rotation_matrices, 1);
+    angle_roll  = zeros(n_frames, 1);
+    angle_pitch = zeros(n_frames, 1);
+    angle_yaw   = zeros(n_frames, 1);
+    
+    for i = 1:n_frames
+        R = squeeze(rotation_matrices(i, :, :));
+        
+        % Extraction des 3 axes possibles (convention ZYX)
+        angle_roll(i)  = atan2(R(3,2), R(3,3));                     % Rotation X
+        angle_pitch(i) = asin(max(-1, min(1, -R(3,1))));            % Rotation Y
+        angle_yaw(i)   = atan2(R(2,1), R(1,1));                     % Rotation Z
+    end
+    
+    % "Déplier" les angles pour éviter les cassures de 360° (Gimbal Lock)
+    angle_roll  = rad2deg(unwrap(angle_roll));
+    angle_pitch = rad2deg(unwrap(angle_pitch));
+    angle_yaw   = rad2deg(unwrap(angle_yaw));
+
+    % --- DÉTECTION AUTOMATIQUE DU BON AXE ---
+    % Calcul de l'amplitude (max - min) manuel pour éviter les soucis de Toolbox
+    amp_roll  = max(angle_roll) - min(angle_roll);
+    amp_pitch = max(angle_pitch) - min(angle_pitch);
+    amp_yaw   = max(angle_yaw) - min(angle_yaw);
+    
+    % Sélection automatique de l'axe qui a tourné le plus
+    amplitudes = [amp_roll, amp_pitch, amp_yaw];
+    [max_amp, axe_dominant] = max(amplitudes);
+    
+    if axe_dominant == 1
+        angle_final = angle_roll;
+        fprintf('  -> Axe détecté : ROLL (X) avec une amplitude de %.1f°\n', max_amp);
+    elseif axe_dominant == 2
+        angle_final = angle_pitch;
+        fprintf('  -> Axe détecté : PITCH (Y) avec une amplitude de %.1f°\n', max_amp);
+    else
+        angle_final = angle_yaw;
+        fprintf('  -> Axe détecté : YAW (Z) avec une amplitude de %.1f°\n', max_amp);
+    end
+end
+
+function [stats] = analyser_sequence(angle, distance, sequence_target, nom_molette)
+    % Analyse la séquence : détecte pics et zéros
+    
+    % Détection robuste des pics
+    [~, idx_max] = findpeaks(angle, 'MinPeakDistance', 20, 'MinPeakHeight', 5);
+    [~, idx_min] = findpeaks(-angle, 'MinPeakDistance', 20, 'MinPeakHeight', 5);
+    
+    % Fusionner et trier
+    idx_pics = sort([idx_max; idx_min]);
+    
+    % Limiter au nombre de pics attendus
+    if length(idx_pics) > length(sequence_target)
+        [~, idx_sort] = sort(abs(angle(idx_pics)), 'descend');
+        idx_pics = sort(idx_pics(idx_sort(1:length(sequence_target))));
+    end
+    
+    % Calcul erreur
+    angle_pics_detectes = angle(idx_pics);
+    erreur = abs(angle_pics_detectes - sequence_target(:)');
+    erreur_max = max(erreur);
+    
+    % DÉTECTION DES FRONTIÈRES DE CYCLES (NOUVEAU)
+    % On cherche le passage par 0 entre chaque paire de pics (1 cycle = 2 pics)
+    idx_cycle_bounds = 1; % Le premier cycle commence au début (1)
+    for i = 2:2:length(idx_pics)-1
+        range_search = idx_pics(i):idx_pics(i+1);
+        [~, min_idx] = min(abs(angle(range_search)));
+        idx_cycle_bounds(end+1) = range_search(min_idx);
+    end
+    idx_cycle_bounds(end+1) = length(angle); % Le dernier cycle s'arrête à la fin
+    
+    % On garde le premier passage par zéro comme fin du "Cycle Détaillé" (Ligne 2)
+    if length(idx_cycle_bounds) >= 2
+        idx_cycle_end = idx_cycle_bounds(2);
+    else
+        idx_cycle_end = length(angle);
+    end
+    
+    % Enregistrement dans la structure stats
+    stats.idx_pics = idx_pics;
+    stats.idx_cycle_end = idx_cycle_end;
+    stats.idx_cycle_bounds = idx_cycle_bounds; % <-- Ajout des frontières
+    stats.erreur_max = erreur_max;
+    stats.angle_pics_detectes = angle_pics_detectes;
+    stats.sequence_target = sequence_target;
+end
